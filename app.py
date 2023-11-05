@@ -40,19 +40,261 @@ with expander:
     ]
 
 
-# import Data
 df_weights = pd.read_csv('data/df_weights.csv')
-df_inflation = pd.read_csv('data/df_inflation.csv')
+#df_inflation = pd.read_csv('data/df_inflation.csv')
 
 # Page 1
-def page1(df):
-    st.title("Page 1")
-    st.write("This is the content for Page 1.")
-    #  Dropdown to select the year
-    selected_year = st.selectbox("Select a Year", df.columns[2:])
+def page1():
+    st.title("Swiss Inflation Explorer")
+    st.write("Exploring Swiss Inflation: Analyze Trends Since 1983 and Compare Currency Impact")
+
+    #############################
+    #### Exchange Rates Load ####
+    #############################
+
+    def process_exchange_rate_data(file_path, sheet_name, exchange_rate_column, new_column_name):
+        # Read the Excel file with the specified header row
+        exchange_rate_df = pd.read_excel(file_path, sheet_name=sheet_name)
+
+        # Select the relevant columns and sort by 'Year'
+        exchange_rate_df = exchange_rate_df[['Year', exchange_rate_column]]
+        exchange_rate_df = exchange_rate_df.sort_values(by='Year', ascending=True)
+
+        # Calculate the change in exchange rate and add it as a new column
+        exchange_rate_df[new_column_name] = exchange_rate_df[exchange_rate_column].diff()
+
+        return exchange_rate_df
+
+    # Replace 'your_file.xlsx' with the path to your Excel file
+    file_path = 'data/exchangerates.xlsx'
+
+    chf_euro = process_exchange_rate_data(file_path, 'CHF_EUR', 'Average CHF/EUR', 'Exchange Rate Change') # Process CHF/EUR data
+    chf_usd = process_exchange_rate_data(file_path, 'CHF_USD', 'Average CHF/USD', 'Exchange Rate Change') # Process CHF/USD data)
+    chf_xbt = process_exchange_rate_data(file_path, 'CHF_XBT', 'Average CHF/XBT', 'Exchange Rate Change') # Process CHF/Bitcoin data)
+    chf_xau = process_exchange_rate_data(file_path, 'CHF_XAU', 'Average CHF/XAU', 'Exchange Rate Change') # Process CHF/Gold data)
+    chf_gbp = process_exchange_rate_data(file_path, 'CHF_GBP', 'Average CHF/GBP', 'Exchange Rate Change') # Process CHF/GBP data)
+    chf_chf = process_exchange_rate_data(file_path, 'CHF_CHF', 'Average CHF/CHF', 'Exchange Rate Change') # Process CHF/CHF data) #Kontrolle Logik
+
+
+    #############################
+    #### Selections ####
+    #############################
+
+    # Define the range of years
+    start_year = 1983
+    end_year = 2022
+    years = list(range(start_year, end_year))
+
+    # Create a dropdown widget to select the year
+    selected_year = st.selectbox("Select Base Year", years)
+
+    # List of options
+    exchange_rate_options = ['CHF','EUR', 'USD', 'GBP','BTC', 'GOLD']
+
+    # Create a selectbox
+    selected_currency_option = st.selectbox('Select a Denomination Currency:', exchange_rate_options)
+
+    # Store the selected option in a variable
+    if selected_currency_option == 'EUR':
+        exchange_rate_df = chf_euro
+    elif selected_currency_option == 'USD':
+        exchange_rate_df = chf_usd
+    elif selected_currency_option == 'BTC':
+        exchange_rate_df = chf_xbt
+    elif selected_currency_option == 'GOLD':
+        exchange_rate_df = chf_xau
+    elif selected_currency_option == 'GBP':
+        exchange_rate_df = chf_gbp
+    elif selected_currency_option == 'CHF':
+        exchange_rate_df = chf_chf
+    
+
+
+    #############################
+    #### Calculate Inflatiom ####
+    #############################
+
+
+    def process_inflation_data(file_path, sheet_name, last_valid_entry, selected_year, exchange_rate_df,level):
+        # Read the Excel file with the specified header row
+        data = pd.read_excel(file_path, sheet_name=sheet_name, header=3)
+
+        # Set the dynamic year values to 100 and remove columns before that year
+        df = data.iloc[:last_valid_entry + 1]  # This will keep rows up to the last_valid_entry
+
+        df_2 = df[df["Level"] == level]
+
+        # Select the columns you want to adjust in df_2
+        start_year = selected_year + 1
+        end_year = 2022
+
+        # Generate a list of integers from start_year to end_year
+        cols_to_adjust = list(range(start_year, end_year + 1))
+
+        if exchange_rate_df is not None:
+
+            # Create a dictionary from exchange rate DataFrame
+            exchange_rate_change_dict = exchange_rate_df.set_index('Year')['Exchange Rate Change'].to_dict()
+
+            # Adjust the values in df_2 based on the exchange rate change
+            for col in cols_to_adjust:
+                year = int(col)
+                df_2[col] = df_2[col] + (exchange_rate_change_dict.get(year, 0) * 100)
+
+        # Set the dynamic year values to 100
+        df_2.loc[:, selected_year] = 100
+
+        # Loop through years and calculate real values and subtract 100, starting from the dynamic year
+        for year in range(selected_year + 1, 2023):
+            df_2[year] = df_2[year - 1] * (1 + df_2[year] / 100)
+
+        for year in range(selected_year, 2023):
+            df_2[year] = df_2[year] - 100
+
+        subset_columns = ['PosTxt_E', 'PosNo', selected_year] + list(range(selected_year + 1, 2023))
+        df_inflation = df_2[subset_columns]
+        df_inflation = df_inflation.rename(columns={'PosNo': 'ID'})
+
+        return df_inflation
+
+    # Example usage with chf_euro DataFrame
+    file_path = 'data/su-e-05.02.67.xlsx'
+    sheet_name = 'VAR_y-1'
+    last_valid_entry = 415
+
+
+    # Process inflation data with the specified exchange rate DataFrame
+    df_inflation = process_inflation_data(file_path, sheet_name, last_valid_entry, selected_year, exchange_rate_df,level=2)
+    df_inflation_total = process_inflation_data(file_path, sheet_name, last_valid_entry, selected_year, exchange_rate_df,level=1)
+
+
+    # Reshape the data into long format
+    df_inflation_long = pd.melt(df_inflation, id_vars=['ID', 'PosTxt_E'], var_name='Year', value_name='Value')
+    df_inflation_total_long = pd.melt(df_inflation_total, id_vars=['ID', 'PosTxt_E'], var_name='Year', value_name='Value')
+
+    # Line chart using Plotly in the first column
+    fig_line = px.line(df_inflation_total_long,
+                    x='Year',
+                    y='Value',  # Pass both indicators as a list
+                    title="",
+                    line_shape=line_shape,
+                    color_discrete_sequence=custom_color_sequence)  # Add colors for each indicator
+    
+    fig_line.update_layout(
+        xaxis_title='',  # Hide the title of the x-axis
+        yaxis_title='Cumulative rate of inflation in %',
+        legend_title_text=''  # Hide the title of the x-axis
+    )
+
+    st.plotly_chart(fig_line,
+                    use_container_width=True,
+                    auto_open=False)
+    
+    st.caption(f"Abbildung 1: Swiss Inflation from {start_year} - {end_year} denominated in {selected_currency_option}")
+
+
+    # Line chart using Plotly in the first column
+    fig_line = px.line(df_inflation_long,
+                    x='Year',
+                    y='Value',  # Pass both indicators as a list
+                    color='PosTxt_E',
+                    title="",
+                    line_shape=line_shape,
+                    color_discrete_sequence=custom_color_sequence)  # Add colors for each indicator
+    
+    fig_line.update_layout(
+        xaxis_title='',  # Hide the title of the x-axis
+        yaxis_title='Cumulative rate of inflation in %',
+        legend_title_text=''  # Hide the title of the x-axis
+    )
+
+    st.plotly_chart(fig_line,
+                    use_container_width=True,
+                    auto_open=False)
+    
+    
+    ### Dataframe with line ####
+    df_development = df_inflation
+    df_development ["Development"] = df_development .apply(lambda row: row[2:].tolist(), axis=1)
+    df_development = df_development [["PosTxt_E","Development",2022]]
+    df_development.reset_index(drop=True, inplace=True)
+
+    st.dataframe(
+        df_development,
+        column_config={
+            "PosTxt_E": "Category",
+            "Development": st.column_config.LineChartColumn(
+                "Cumulative rate of inflation in %",
+                width="medium",
+                help="Cumulative rate of inflation in %"),
+            "2022":"Total rate of inflation in %"
+        },
+        hide_index=True,
+        use_container_width = True
+    )
+
+    #########################
+    ##### Basekt Weights ####
+    #########################
+
+    valid_gp_values = [1,2,3,4,5,6,7,8,9,10,11,12]
+    def process_excel_data(file_path,
+                        sheet_name,
+                        header_row,
+                        last_valid_entry,
+                        valid_column,
+                        year_columns,
+                        id_column,
+                        id_column_name,
+                        additional_columns=None):
+        
+        data = pd.read_excel(file_path, sheet_name=sheet_name, header=header_row)
+        data = data.iloc[:last_valid_entry + 1]
+
+        filtered_data = data[data[valid_column].isin(valid_gp_values)]
+        selected_columns = additional_columns + [valid_column] + year_columns
+        filtered_data = filtered_data[selected_columns]
+        filtered_data = filtered_data.rename(columns={valid_column: id_column_name})
+
+        return filtered_data
+
+    file_path = 'data/su-d-05.02.90.xlsx'
+
+    # Process 2020 data
+    df_b_l2_20 = process_excel_data(file_path, 'LIK2020', 3, 415, 'PosNo', [2021, '2022', '2023'], 'PosNo', 'ID', additional_columns=['PosTxt_E'])
+
+    # Process 2015 data
+    valid_PosNo_15 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    df_b_l2_15 = process_excel_data(file_path, 'LIK2015', 3, 396, 'PosNo', [2016, 2017, '2018', '2019', '2020'], 'PosNo', 'ID', additional_columns=['PosTxt_E'])
+
+    # Process 2010 data
+    valid_gp_values_10 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    df_b_l2_10 = process_excel_data(file_path, 'LIK2010', 3, 313, 'GP Nr.', [2011, 2012, 2013, 2014, 2015], 'GP Nr.', 'ID', additional_columns=['deutsch'])
+
+    # Process 2005 data
+    valid_gp_values_05 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    df_b_l2_05 = process_excel_data(file_path, 'LIK2005', 3, 313, 'GP Nr.', [2006, 2007, 2008, 2009, 2010], 'GP Nr.', 'ID', additional_columns=['deutsch'])
+
+    # Process 2000 data
+    valid_gp_values_00 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    df_b_l2_00 = process_excel_data(file_path, 'LIK2000', 3, 313, 'Nr. ', ['2000/01', 2002, 2003, 2004, 2005], 'Nr. ', 'ID', additional_columns=['Position'])
+
+    # Start with df_b_l2_00 and perform left joins in the reverse order
+    left_merged_df = pd.merge(df_b_l2_00, df_b_l2_05, on='ID', how='left')
+    left_merged_df = pd.merge(left_merged_df, df_b_l2_10, on='ID', how='left')
+    left_merged_df = pd.merge(left_merged_df, df_b_l2_15, on='ID', how='left')
+    left_merged_df = pd.merge(left_merged_df, df_b_l2_20, on='ID', how='left')
+    left_merged_df.columns = left_merged_df.columns.astype(str)
+    df_weights = left_merged_df[['Position','ID','2000/01','2002','2003','2004','2005','2006','2007','2008','2009','2010','2011','2012','2013','2014','2015','2016','2017','2018','2019','2020','2021','2022','2023']]
+    df_weights = df_weights.rename(columns={'2000/01': '2001'})
+    columns_to_convert = df_weights .columns[2:]  # Assuming the percentage columns start from the 3rd column
+    df_weights[columns_to_convert] = df_weights [columns_to_convert] / 100 # convert to decimal
+
+
+    selected_year = st.selectbox("Select a Year", df_weights.columns[2:])
 
     # Filter data for the selected year
-    year_data = df[['Position', selected_year]]
+    year_data = df_weights[['Position', selected_year]]
 
     # Sort the DataFrame by the selected year in descending order
     year_data = year_data.sort_values(by=selected_year, ascending=False)
@@ -75,17 +317,18 @@ def page1(df):
     st.plotly_chart(fig_donut)
 
 # Page 2
-def page2():
+def page2(df):
     st.title("Page 2")
-    st.write("This is the content for Page 2.")
-    # Add more content for Page 2
+    st.write("This is the content for Page 1.")
+    #  Dropdown to select the year
+    
 
 # Create a navigation menu
 page = st.sidebar.selectbox("Select a Page", ["Page 1", "Page 2"])
 
 # Display the selected page
 if page == "Page 1":
-    page1(df_weights)
+    page1()
 elif page == "Page 2":
-    page2()
+    page2(df_weights)
 
