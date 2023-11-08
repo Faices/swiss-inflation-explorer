@@ -1,3 +1,5 @@
 streamlit
 pandas==1.5.3
 plotly
+openpyxl
+pyaxis
