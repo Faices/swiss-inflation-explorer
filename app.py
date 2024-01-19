@@ -179,13 +179,13 @@ def calculate_cumulative_inflation(df, selected_year):
     df.loc[:, selected_year] = 100
 
     # Loop through years and calculate real values and subtract 100, starting from the dynamic year
-    for year in range(selected_year + 1, 2023):
+    for year in range(selected_year + 1, 2024):
         df[year] = df[year - 1] * (1 + df[year] / 100)
 
-    for year in range(selected_year, 2023):
+    for year in range(selected_year, 2024):
         df[year] = df[year] - 100
 
-    subset_columns = ['PosTxt_E', 'PosNo', selected_year] + list(range(selected_year + 1, 2023))
+    subset_columns = ['PosTxt_E', 'PosNo', selected_year] + list(range(selected_year + 1, 2024))
     df = df[subset_columns]
     df = df.rename(columns={'PosNo': 'ID'})
 
@@ -195,7 +195,7 @@ def calculate_cumulative_inflation(df, selected_year):
 # Example usage with chf_euro DataFrame
 file_path = 'data/su-e-05.02.67.xlsx'
 sheet_name = 'VAR_y-1'
-last_valid_entry = 415
+last_valid_entry = 420 # 420 is the last valid entry in the Excel file and need to be checked each year 
 
 
 # Process inflation data with the specified exchange rate DataFrame
@@ -212,7 +212,7 @@ df_inflation_cumulative_l1 = calculate_cumulative_inflation(df_inflation_exchang
 df_inflation_cumulative_l2_long = pd.melt(df_inflation_cumulative_l2 , id_vars=['ID', 'PosTxt_E'], var_name='Year', value_name='Value')
 df_inflation_cumulative_l1_long = pd.melt(df_inflation_cumulative_l1 , id_vars=['ID', 'PosTxt_E'], var_name='Year', value_name='Value')
 
-cumulative_inflation_end = round(df_inflation_cumulative_l1_long.loc[df_inflation_cumulative_l1_long['Year'] == 2022, 'Value'].values[0], 1)
+cumulative_inflation_end = round(df_inflation_cumulative_l1_long.loc[df_inflation_cumulative_l1_long['Year'] == 2023, 'Value'].values[0], 1)
 
 
 # Line chart using Plotly in the first column
@@ -263,7 +263,7 @@ st.plotly_chart(fig_line,
                 use_container_width=True,
                 auto_open=False)
 
-st.caption(f"Figure 2: Swiss Inflation by Categories from {start_year} - {end_year} denominated in {selected_currency_option}")
+st.caption(f"Figure 2: Swiss Inflation by Categories from {selected_year} - {end_year} denominated in {selected_currency_option}")
 
 
 # ### Dataframe with line ####
@@ -506,7 +506,7 @@ st.plotly_chart(fig_line,
                 use_container_width=True,
                 auto_open=False)
 
-st.caption(f"Figure 1: Swiss Inflation for {selected_option} from {selected_year} - {last_possible_year} denominated in {selected_currency_option}")
+st.caption(f"Figure 4: Swiss Inflation for {selected_option} from {selected_year} - {last_possible_year} denominated in {selected_currency_option}")
 
 
 
